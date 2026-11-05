@@ -293,9 +293,9 @@ function StockEntryPage() {
             <Input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search item…" className="pl-8" />
           </div>
         </div>
-        <div className="overflow-x-auto">
+        <div className="max-h-[calc(100vh-140px)] overflow-auto">
           <table className="w-full text-sm">
-            <thead className="sticky top-[57px] z-10 bg-secondary text-left text-[11px] uppercase tracking-wider text-muted-foreground">
+            <thead className="sticky top-0 z-10 bg-secondary text-left text-[11px] uppercase tracking-wider text-muted-foreground">
               <tr>
                 <th className="px-2 py-2">#</th>
                 <th className="px-2 py-2">Description</th>
