@@ -20,6 +20,41 @@ export interface Sale {
   note?: string;
 }
 
+/** One line of computer stock entry (like a bill line). Same item can have many lines. */
+export interface ComputerEntry {
+  id: string;
+  itemId: string;
+  qty: number;
+  /** ISO timestamp of entry */
+  at: string;
+}
+
+/** Item code = first word of the description, e.g. "1045" in "1045 MEAT MINDER". */
+export function itemCode(description: string): string {
+  return description.trim().split(/\s+/)[0] ?? "";
+}
+
+/** Total computer qty per item from entry lines. Items with no lines are absent. */
+export function computerTotals(entries: ComputerEntry[]): Map<string, number> {
+  const m = new Map<string, number>();
+  for (const e of entries) m.set(e.itemId, (m.get(e.itemId) ?? 0) + e.qty);
+  return m;
+}
+
+/**
+ * Order lines like a bill: items in order of their first entry, with every
+ * repeat entry of the same item placed directly under the earlier one.
+ */
+export function groupLinesByItem<T extends { itemId: string }>(lines: T[]): T[][] {
+  const groups = new Map<string, T[]>();
+  for (const l of lines) {
+    const g = groups.get(l.itemId);
+    if (g) g.push(l);
+    else groups.set(l.itemId, [l]);
+  }
+  return [...groups.values()];
+}
+
 export interface ReportMeta {
   storeName: string;
   countDate: string;

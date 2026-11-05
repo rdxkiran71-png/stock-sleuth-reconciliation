@@ -1,5 +1,39 @@
 import { describe, expect, it } from "vitest";
-import { reconcileItem, reconcileAll, summarize, type StockItem, type Sale } from "./stock";
+import {
+  reconcileItem,
+  reconcileAll,
+  summarize,
+  computerTotals,
+  groupLinesByItem,
+  itemCode,
+  type StockItem,
+  type Sale,
+} from "./stock";
+
+describe("bill-style computer entries", () => {
+  it("adds up every entry line of the same item", () => {
+    const t = computerTotals([
+      { id: "1", itemId: "a", qty: 20, at: "" },
+      { id: "2", itemId: "b", qty: 5, at: "" },
+      { id: "3", itemId: "a", qty: 10, at: "" },
+    ]);
+    expect(t.get("a")).toBe(30);
+    expect(t.get("b")).toBe(5);
+  });
+
+  it("puts a repeated item's second line directly under its first line", () => {
+    const groups = groupLinesByItem([
+      { id: "1", itemId: "a" },
+      { id: "2", itemId: "b" },
+      { id: "3", itemId: "a" },
+    ]);
+    expect(groups.map((g) => g.map((l) => l.id))).toEqual([["1", "3"], ["2"]]);
+  });
+
+  it("item code is the first word of the description", () => {
+    expect(itemCode("1045 MEAT MINDER")).toBe("1045");
+  });
+});
 
 const item = (over: Partial<StockItem> = {}): StockItem => ({
   id: "a",

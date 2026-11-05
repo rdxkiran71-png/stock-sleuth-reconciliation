@@ -1,9 +1,11 @@
 import { useSyncExternalStore } from "react";
 import seed from "@/data/westpoint-items.json";
-import type { ReportMeta, Sale, StockItem } from "./stock";
+import { computerTotals, type ComputerEntry, type ReportMeta, type Sale, type StockItem } from "./stock";
 
 export interface AppState {
   items: StockItem[];
+  /** Bill-style computer stock lines; items[].computer is kept in sync as their total. */
+  entries: ComputerEntry[];
   sales: Sale[];
   meta: ReportMeta;
 }
@@ -23,13 +25,46 @@ export function seedState(): AppState {
       rate: s.rate,
       computer: null,
     })),
+    entries: [],
     sales: [],
     meta: { storeName: "Westpoint", countDate: today(), preparedBy: "", checkedBy: "" },
   };
 }
 
+/** Keep items[].computer equal to the sum of entry lines (null when an item has none). */
+function syncComputer(s: AppState): AppState {
+  const totals = computerTotals(s.entries);
+  return {
+    ...s,
+    items: s.items.map((i) => {
+      const c = totals.has(i.id) ? totals.get(i.id)! : null;
+      return i.computer === c ? i : { ...i, computer: c };
+    }),
+  };
+}
+
+/** Accept saved/backup data, including older versions that stored computer qty directly. */
+function normalize(parsed: Partial<AppState>): AppState {
+  const base = seedState();
+  const items = parsed.items ?? base.items;
+  let entries = parsed.entries;
+  if (!Array.isArray(entries)) {
+    const at = new Date().toISOString();
+    entries = items
+      .filter((i) => i.computer !== null && i.computer !== undefined)
+      .map((i) => ({ id: uid(), itemId: i.id, qty: i.computer as number, at }));
+  }
+  return syncComputer({
+    items,
+    entries,
+    sales: parsed.sales ?? [],
+    meta: { ...base.meta, ...parsed.meta },
+  });
+}
+
 const SERVER_STATE = seedState();
 let state: AppState | null = null;
+const uid = () => Math.random().toString(36).slice(2, 10) + Date.now().toString(36);
 const listeners = new Set<() => void>();
 
 function load(): AppState {
@@ -39,7 +74,7 @@ function load(): AppState {
     if (raw) {
       const parsed = JSON.parse(raw) as AppState;
       if (Array.isArray(parsed.items) && Array.isArray(parsed.sales)) {
-        state = { ...seedState(), ...parsed, meta: { ...seedState().meta, ...parsed.meta } };
+        state = normalize(parsed);
         return state;
       }
     }
@@ -61,7 +96,7 @@ function setState(next: AppState) {
 }
 
 function update(fn: (s: AppState) => AppState) {
-  setState(fn(load()));
+  setState(syncComputer(fn(load())));
 }
 
 const subscribe = (l: () => void) => {
@@ -73,14 +108,21 @@ export function useAppState(): AppState {
   return useSyncExternalStore(subscribe, load, () => SERVER_STATE);
 }
 
-const uid = () => Math.random().toString(36).slice(2, 10) + Date.now().toString(36);
 
 export const actions = {
-  setComputer(id: string, computer: number | null) {
+  addEntry(itemId: string, qty: number): string {
+    const id = uid();
     update((s) => ({
       ...s,
-      items: s.items.map((i) => (i.id === id ? { ...i, computer } : i)),
+      entries: [...s.entries, { id, itemId, qty, at: new Date().toISOString() }],
     }));
+    return id;
+  },
+  updateEntry(id: string, qty: number) {
+    update((s) => ({ ...s, entries: s.entries.map((e) => (e.id === id ? { ...e, qty } : e)) }));
+  },
+  deleteEntry(id: string) {
+    update((s) => ({ ...s, entries: s.entries.filter((e) => e.id !== id) }));
   },
   updateItem(id: string, patch: Partial<Omit<StockItem, "id">>) {
     update((s) => ({
@@ -89,26 +131,39 @@ export const actions = {
     }));
   },
   addItem(item: Omit<StockItem, "id">) {
-    update((s) => ({ ...s, items: [...s.items, { ...item, id: uid() }] }));
+    const id = uid();
+    update((s) => ({
+      ...s,
+      items: [...s.items, { ...item, id, computer: null }],
+      entries:
+        item.computer === null
+          ? s.entries
+          : [...s.entries, { id: uid(), itemId: id, qty: item.computer, at: new Date().toISOString() }],
+    }));
   },
   deleteItem(id: string) {
     update((s) => ({
       ...s,
       items: s.items.filter((i) => i.id !== id),
+      entries: s.entries.filter((e) => e.itemId !== id),
       sales: s.sales.filter((x) => x.itemId !== id),
     }));
   },
   fillPendingWithInHand() {
+    const at = new Date().toISOString();
     update((s) => ({
       ...s,
-      items: s.items.map((i) => (i.computer === null ? { ...i, computer: i.inHand } : i)),
+      entries: [
+        ...s.entries,
+        ...s.items.filter((i) => i.computer === null).map((i) => ({ id: uid(), itemId: i.id, qty: i.inHand, at })),
+      ],
     }));
   },
   clearComputer() {
-    update((s) => ({ ...s, items: s.items.map((i) => ({ ...i, computer: null })) }));
+    update((s) => ({ ...s, entries: [] }));
   },
   addSale(sale: Omit<Sale, "id">) {
-    update((s) => ({ ...s, sales: [{ ...sale, id: uid() }, ...s.sales] }));
+    update((s) => ({ ...s, sales: [...s.sales, { ...sale, id: uid() }] }));
   },
   deleteSale(id: string) {
     update((s) => ({ ...s, sales: s.sales.filter((x) => x.id !== id) }));
@@ -117,7 +172,7 @@ export const actions = {
     update((s) => ({ ...s, meta: { ...s.meta, ...patch } }));
   },
   replaceAll(next: AppState) {
-    setState(next);
+    setState(normalize(next));
   },
   resetAll() {
     setState(seedState());
@@ -149,7 +204,7 @@ export function downloadCsv(filename: string, rows: (string | number)[][]) {
 export function parseBackup(text: string): AppState {
   const parsed = JSON.parse(text);
   if (parsed && Array.isArray(parsed.items) && Array.isArray(parsed.sales)) {
-    return { ...seedState(), ...parsed, meta: { ...seedState().meta, ...parsed.meta } };
+    return normalize(parsed);
   }
   throw new Error("This file is not a valid stock audit backup.");
 }

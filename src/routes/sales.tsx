@@ -16,7 +16,17 @@ import {
   CommandList,
 } from "@/components/ui/command";
 import { actions, useAppState } from "@/lib/store";
-import { fmtNum, fmtRs, summarize, reconcileAll, type Sale } from "@/lib/stock";
+import {
+  fmtNum,
+  fmtRs,
+  groupLinesByItem,
+  itemCode,
+  summarize,
+  reconcileAll,
+  type Sale,
+  type StockItem,
+} from "@/lib/stock";
+import { QuickEntryBar } from "@/components/QuickEntryBar";
 
 export const Route = createFileRoute("/sales")({
   head: () => ({
@@ -45,33 +55,21 @@ function SalesPage() {
   const s = useMemo(() => summarize(reconcileAll(items, sales), sales), [items, sales]);
   const byId = useMemo(() => new Map(items.map((i) => [i.id, i])), [items]);
 
-  const [open, setOpen] = useState(false);
-  const [itemId, setItemId] = useState<string>("");
-  const [qty, setQty] = useState("1");
-  const [saleRate, setSaleRate] = useState("");
   const [date, setDate] = useState(today());
   const [billNo, setBillNo] = useState("");
   const [note, setNote] = useState("");
-  const qtyRef = useRef<HTMLInputElement>(null);
+  const groups = useMemo(() => groupLinesByItem(sales), [sales]);
 
-  const selected = itemId ? byId.get(itemId) : undefined;
-
-  const submit = () => {
-    if (!selected) { toast.error("Please choose an item."); return; }
-    const q = Number(qty);
-    if (!Number.isInteger(q) || q <= 0) { toast.error("Quantity must be a whole number above 0."); return; }
-    const r = saleRate.trim() === "" ? selected.rate : Number(saleRate);
-    if (!Number.isFinite(r) || r < 0) { toast.error("Sale rate must be 0 or more."); return; }
-    const sale: Omit<Sale, "id"> = { itemId: selected.id, qty: q, saleRate: r, date };
+  const addSale = (item: StockItem, qty: number, saleRate: number) => {
+    if (qty <= 0) {
+      toast.error("Sale quantity must be above 0.");
+      return;
+    }
+    const sale: Omit<Sale, "id"> = { itemId: item.id, qty, saleRate, date };
     if (billNo.trim()) sale.billNo = billNo.trim();
     if (note.trim()) sale.note = note.trim();
     actions.addSale(sale);
-    toast.success(`${q} × ${selected.description} added to sales`);
-    setItemId("");
-    setQty("1");
-    setSaleRate("");
-    setNote("");
-    setOpen(true);
+    toast.success(`${itemCode(item.description)} · ${qty} pcs added to sales`, { duration: 1200 });
   };
 
   // Group per item for the posting summary
@@ -106,89 +104,33 @@ function SalesPage() {
         <StatCard label="Sale amount" tone="ink" value={fmtRs(s.soldSaleValue)} />
       </div>
 
-      <div className="grid gap-6 lg:grid-cols-[380px_1fr]">
-        <form
-          className="h-fit rounded-lg border border-border bg-card p-5 shadow-card"
-          onSubmit={(e) => {
-            e.preventDefault();
-            submit();
-          }}
-        >
-          <h2 className="mb-4 text-lg font-semibold">Add sale</h2>
-          <div className="grid gap-4">
-            <div className="grid gap-1.5">
-              <Label>Item</Label>
-              <Popover open={open} onOpenChange={setOpen}>
-                <PopoverTrigger asChild>
-                  <Button variant="outline" role="combobox" className="justify-between font-normal">
-                    <span className="truncate">{selected ? selected.description : "Choose item…"}</span>
-                    <ChevronsUpDown className="opacity-50" />
-                  </Button>
-                </PopoverTrigger>
-                <PopoverContent className="w-[340px] p-0" align="start">
-                  <Command>
-                    <CommandInput placeholder="Search item…" />
-                    <CommandList>
-                      <CommandEmpty>No item found.</CommandEmpty>
-                      <CommandGroup>
-                        {items.map((i) => (
-                          <CommandItem
-                            key={i.id}
-                            value={`${i.description} ${i.id}`}
-                            onSelect={() => {
-                              setItemId(i.id);
-                              setSaleRate(String(i.rate));
-                              setOpen(false);
-                              setTimeout(() => qtyRef.current?.select(), 50);
-                            }}
-                          >
-                            <Check className={`size-4 ${itemId === i.id ? "opacity-100" : "opacity-0"}`} />
-                            <span className="flex-1 truncate">{i.description}</span>
-                            <span className="num text-xs text-muted-foreground">{i.inHand} in hand</span>
-                          </CommandItem>
-                        ))}
-                      </CommandGroup>
-                    </CommandList>
-                  </Command>
-                </PopoverContent>
-              </Popover>
-              {selected && (
-                <p className="num text-xs text-muted-foreground">
-                  In hand {selected.inHand} · Computer {selected.computer ?? "—"} · Cost {fmtRs(selected.rate)}
-                </p>
-              )}
-            </div>
-            <div className="grid grid-cols-2 gap-3">
-              <div className="grid gap-1.5">
-                <Label htmlFor="qty">Quantity</Label>
-                <Input ref={qtyRef} id="qty" type="number" min={1} value={qty} onChange={(e) => setQty(e.target.value)} />
-              </div>
-              <div className="grid gap-1.5">
-                <Label htmlFor="srate">Sale rate (Rs)</Label>
-                <Input id="srate" type="number" min={0} value={saleRate} onChange={(e) => setSaleRate(e.target.value)} placeholder="Cost rate" />
-              </div>
-            </div>
-            <div className="grid grid-cols-2 gap-3">
-              <div className="grid gap-1.5">
-                <Label htmlFor="date">Date</Label>
-                <Input id="date" type="date" value={date} onChange={(e) => setDate(e.target.value)} />
-              </div>
-              <div className="grid gap-1.5">
-                <Label htmlFor="bill">Bill no.</Label>
-                <Input id="bill" value={billNo} onChange={(e) => setBillNo(e.target.value)} placeholder="Optional" />
-              </div>
-            </div>
-            <div className="grid gap-1.5">
-              <Label htmlFor="note">Customer / note</Label>
-              <Input id="note" value={note} onChange={(e) => setNote(e.target.value)} placeholder="Optional" />
-            </div>
-            <Button type="submit">
-              <Plus /> Add to sales
-            </Button>
+      <div className="mb-6 rounded-lg border-2 border-primary/30 bg-card p-4 shadow-card">
+        <div className="mb-3 flex flex-wrap items-end gap-3">
+          <h2 className="mr-auto text-lg font-semibold">Add sale</h2>
+          <div className="grid gap-1">
+            <Label htmlFor="date" className="text-xs">Date</Label>
+            <Input id="date" type="date" value={date} onChange={(e) => setDate(e.target.value)} className="w-40" />
           </div>
-        </form>
+          <div className="grid gap-1">
+            <Label htmlFor="bill" className="text-xs">Bill no.</Label>
+            <Input id="bill" value={billNo} onChange={(e) => setBillNo(e.target.value)} placeholder="Optional" className="w-32" />
+          </div>
+          <div className="grid gap-1">
+            <Label htmlFor="note" className="text-xs">Customer / note</Label>
+            <Input id="note" value={note} onChange={(e) => setNote(e.target.value)} placeholder="Optional" className="w-48" />
+          </div>
+        </div>
+        <QuickEntryBar
+          items={items}
+          withRate
+          qtyLabel="Sold qty"
+          saveLabel="Add sale"
+          existingQtys={(id) => sales.filter((x) => x.itemId === id).map((x) => x.qty)}
+          onAdd={addSale}
+        />
+      </div>
 
-        <div className="grid gap-6">
+      <div className="grid gap-6">
           <div className="rounded-lg border border-border bg-card shadow-card">
             <div className="border-b border-border p-4">
               <h2 className="text-lg font-semibold">Sale entries</h2>
@@ -208,30 +150,56 @@ function SalesPage() {
                   </tr>
                 </thead>
                 <tbody>
-                  {sales.map((x) => (
-                    <tr key={x.id} className="border-b border-border/70">
-                      <td className="num px-3 py-2 text-xs">{x.date}</td>
-                      <td className="px-3 py-2 text-xs">{x.billNo ?? ""}</td>
-                      <td className="px-3 py-2 font-medium">{byId.get(x.itemId)?.description ?? "Deleted item"}</td>
-                      <td className="num px-3 py-2 text-right">{fmtNum(x.qty)}</td>
-                      <td className="num px-3 py-2 text-right">{fmtNum(x.saleRate)}</td>
-                      <td className="num px-3 py-2 text-right font-semibold">{fmtNum(x.qty * x.saleRate)}</td>
-                      <td className="px-3 py-2 text-xs text-muted-foreground">{x.note ?? ""}</td>
-                      <td className="px-2 py-2">
-                        <button
-                          type="button"
-                          title="Delete"
-                          className="rounded p-1 text-muted-foreground hover:bg-short-soft hover:text-short"
-                          onClick={() => {
-                            actions.deleteSale(x.id);
-                            toast.success("Sale removed");
-                          }}
-                        >
-                          <Trash2 className="size-4" />
-                        </button>
-                      </td>
-                    </tr>
-                  ))}
+                  {groups.map((g) => {
+                    const multi = g.length > 1;
+                    return [
+                      ...g.map((x, i) => (
+                        <tr key={x.id} className={`border-b border-border/70 ${multi ? "bg-pending-soft/70" : ""}`}>
+                          <td className="num px-3 py-2 text-xs">{x.date}</td>
+                          <td className="px-3 py-2 text-xs">{x.billNo ?? ""}</td>
+                          <td className="px-3 py-2 font-medium">
+                            {multi && i > 0 && <span className="mr-1 text-pending">↳</span>}
+                            {byId.get(x.itemId)?.description ?? "Deleted item"}
+                            {multi && (
+                              <span className="ml-2 rounded bg-pending/15 px-1.5 py-0.5 text-[10px] font-semibold uppercase text-pending">
+                                {i + 1} of {g.length}
+                              </span>
+                            )}
+                          </td>
+                          <td className="num px-3 py-2 text-right">{fmtNum(x.qty)}</td>
+                          <td className="num px-3 py-2 text-right">{fmtNum(x.saleRate)}</td>
+                          <td className="num px-3 py-2 text-right font-semibold">{fmtNum(x.qty * x.saleRate)}</td>
+                          <td className="px-3 py-2 text-xs text-muted-foreground">{x.note ?? ""}</td>
+                          <td className="px-2 py-2">
+                            <button
+                              type="button"
+                              title="Delete"
+                              className="rounded p-1 text-muted-foreground hover:bg-short-soft hover:text-short"
+                              onClick={() => {
+                                actions.deleteSale(x.id);
+                                toast.success("Sale removed");
+                              }}
+                            >
+                              <Trash2 className="size-4" />
+                            </button>
+                          </td>
+                        </tr>
+                      )),
+                      multi ? (
+                        <tr key={`${g[0]!.itemId}-t`} className="border-b-2 border-pending/40 bg-pending-soft">
+                          <td colSpan={3} className="px-3 py-1 text-right text-xs font-semibold uppercase text-pending">
+                            Total ({g.length} entries)
+                          </td>
+                          <td className="num px-3 py-1 text-right font-bold">{fmtNum(g.reduce((a, x) => a + x.qty, 0))}</td>
+                          <td />
+                          <td className="num px-3 py-1 text-right font-bold">
+                            {fmtNum(g.reduce((a, x) => a + x.qty * x.saleRate, 0))}
+                          </td>
+                          <td colSpan={2} />
+                        </tr>
+                      ) : null,
+                    ];
+                  })}
                   {sales.length === 0 && (
                     <tr>
                       <td colSpan={8} className="p-8 text-center text-muted-foreground">
