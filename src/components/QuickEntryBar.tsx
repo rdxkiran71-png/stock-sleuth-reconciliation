@@ -73,6 +73,7 @@ export const QuickEntryBar = forwardRef<QuickEntryBarHandle, Props>(function Qui
   const choose = (item: StockItem) => {
     setError("");
     if (existingQtys(item.id).length > 0) {
+      afterDialog.current = "code";
       setDupFor(item);
       return;
     }
@@ -274,7 +275,6 @@ export const QuickEntryBar = forwardRef<QuickEntryBarHandle, Props>(function Qui
         open={dupFor !== null}
         onOpenChange={(o) => {
           if (!o) {
-            if (dupFor && !selected) afterDialog.current = "code";
             setDupFor(null);
           }
         }}
