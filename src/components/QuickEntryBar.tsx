@@ -149,7 +149,10 @@ export const QuickEntryBar = forwardRef<QuickEntryBarHandle, Props>(function Qui
                   setHi((h) => Math.max(h - 1, 0));
                 } else if (e.key === "Enter") {
                   e.preventDefault();
-                  if (selected) return focusQty();
+                  if (selected) {
+                    focusQty();
+                    return;
+                  }
                   const pick = results[hi];
                   if (pick) choose(pick);
                   else setError(query.trim() ? "No item found with this code." : "Type an item code.");
