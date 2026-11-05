@@ -1,10 +1,12 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { memo, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
-import { CopyCheck, Download, Equal, Pencil, Plus, RotateCcw, Search, Upload } from "lucide-react";
+import { CopyCheck, Download, Pencil, Plus, RotateCcw, Search, Upload } from "lucide-react";
 import { AppShell, StatCard } from "@/components/AppShell";
 import { StatusBadge } from "@/components/StatusBadge";
 import { ItemDialog } from "@/components/ItemDialog";
+import { QuickEntryBar } from "@/components/QuickEntryBar";
+import { EntryLines } from "@/components/EntryLines";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { actions, exportBackup, parseBackup, useAppState } from "@/lib/store";
@@ -12,6 +14,7 @@ import {
   fmtNum,
   fmtRs,
   fmtSigned,
+  itemCode,
   reconcileAll,
   summarize,
   type ReconciledItem,
@@ -48,22 +51,14 @@ const filters: { key: Filter; label: string }[] = [
   { key: "matched", label: "Matched" },
 ];
 
-function focusRow(idx: number) {
-  const el = document.querySelector<HTMLInputElement>(`[data-cinput="${idx}"]`);
-  if (el) {
-    el.focus();
-    el.select();
-  }
-}
-
 const Row = memo(function Row({
   r,
-  idx,
+  lines,
   serial,
   onEdit,
 }: {
   r: ReconciledItem;
-  idx: number;
+  lines: number;
   serial: number;
   onEdit: (item: StockItem) => void;
 }) {
@@ -75,45 +70,11 @@ const Row = memo(function Row({
       <td className="px-2 py-1.5 font-medium">{r.description}</td>
       <td className="num px-2 py-1.5 text-right text-muted-foreground">{fmtNum(r.rate)}</td>
       <td className="num px-2 py-1.5 text-right font-semibold">{fmtNum(r.inHand)}</td>
-      <td className="px-2 py-1">
-        <div className="flex items-center justify-end gap-1">
-          <input
-            data-cinput={idx}
-            type="number"
-            inputMode="numeric"
-            min={0}
-            value={r.computer ?? ""}
-            placeholder="—"
-            aria-label={`Computer qty for ${r.description}`}
-            onFocus={(e) => e.currentTarget.select()}
-            onChange={(e) => {
-              const v = e.target.value;
-              actions.setComputer(r.id, v === "" ? null : Math.max(0, Math.floor(Number(v))));
-            }}
-            onKeyDown={(e) => {
-              if (e.key === "Enter" || e.key === "ArrowDown") {
-                e.preventDefault();
-                focusRow(idx + 1);
-              } else if (e.key === "ArrowUp") {
-                e.preventDefault();
-                focusRow(idx - 1);
-              } else if (e.key === "=") {
-                e.preventDefault();
-                actions.setComputer(r.id, r.inHand);
-                focusRow(idx + 1);
-              }
-            }}
-            className="num h-8 w-20 rounded-md border border-input bg-paper px-2 text-right text-sm font-semibold outline-none transition focus:border-primary focus:ring-2 focus:ring-ring/30"
-          />
-          <button
-            type="button"
-            title="Same as in hand"
-            onClick={() => actions.setComputer(r.id, r.inHand)}
-            className="rounded p-1 text-muted-foreground transition hover:bg-secondary hover:text-primary"
-          >
-            <Equal className="size-3.5" />
-          </button>
-        </div>
+      <td className="num px-2 py-1.5 text-right font-semibold">
+        {r.computer === null ? <span className="text-muted-foreground">—</span> : fmtNum(r.computer)}
+        {lines > 1 && (
+          <span className="ml-1 rounded bg-pending-soft px-1 text-[10px] font-semibold text-pending">×{lines}</span>
+        )}
       </td>
       <td className="num px-2 py-1.5 text-right text-muted-foreground">{r.sold ? fmtNum(r.sold) : ""}</td>
       <td
@@ -148,7 +109,14 @@ const Row = memo(function Row({
 });
 
 function StockEntryPage() {
-  const { items, sales } = useAppState();
+  const { items, sales, entries } = useAppState();
+  const byId = useMemo(() => new Map(items.map((i) => [i.id, i])), [items]);
+  const lineCount = useMemo(() => {
+    const m = new Map<string, number>();
+    entries.forEach((e) => m.set(e.itemId, (m.get(e.itemId) ?? 0) + 1));
+    return m;
+  }, [entries]);
+  const [lastAdded, setLastAdded] = useState<string | null>(null);
   const rows = useMemo(() => reconcileAll(items, sales), [items, sales]);
   const s = useMemo(() => summarize(rows, sales), [rows, sales]);
   const [filter, setFilter] = useState<Filter>("all");
@@ -184,9 +152,9 @@ function StockEntryPage() {
         <div>
           <h1 className="text-3xl font-semibold">Stock entry</h1>
           <p className="mt-1 max-w-2xl text-sm text-muted-foreground">
-            Type the quantity showing in the <strong>computer</strong> for each item. Press{" "}
-            <kbd className="num rounded border bg-paper px-1">Enter</kbd> to jump to the next item, or{" "}
-            <kbd className="num rounded border bg-paper px-1">=</kbd> if it is the same as in hand.
+            Enter the stock showing in the <strong>computer</strong> like a bill: type the item code, press Enter,
+            type the qty, press Enter, then Enter again to save. If an item is entered twice, its lines are added
+            together.
           </p>
         </div>
         <div className="flex flex-wrap gap-2">
@@ -273,8 +241,30 @@ function StockEntryPage() {
         />
       </div>
 
+      <div className="mb-6 rounded-lg border-2 border-primary/30 bg-card shadow-card">
+        <div className="border-b border-border p-4">
+          <div className="mb-3 flex items-baseline justify-between gap-2">
+            <h2 className="text-lg font-semibold">Computer stock entry</h2>
+            <span className="num text-xs text-muted-foreground">
+              {entries.length} lines · {lineCount.size} items · {fmtNum(entries.reduce((a, e) => a + e.qty, 0))} pcs
+            </span>
+          </div>
+          <QuickEntryBar
+            items={items}
+            existingQtys={(id) => entries.filter((e) => e.itemId === id).map((e) => e.qty)}
+            qtyLabel="Computer qty"
+            onAdd={(item, qty) => {
+              setLastAdded(actions.addEntry(item.id, qty));
+              toast.success(`${itemCode(item.description)} · ${qty} pcs saved`, { duration: 1200 });
+            }}
+          />
+        </div>
+        <EntryLines entries={entries} byId={byId} lastAddedId={lastAdded} />
+      </div>
+
       <div className="rounded-lg border border-border bg-card shadow-card">
         <div className="flex flex-wrap items-center gap-3 border-b border-border p-3">
+          <h2 className="mr-2 text-lg font-semibold">All items</h2>
           <div className="flex flex-wrap gap-1">
             {filters.map((f) => (
               <button
@@ -301,7 +291,7 @@ function StockEntryPage() {
                 <th className="px-2 py-2">Description</th>
                 <th className="px-2 py-2 text-right">Rate</th>
                 <th className="px-2 py-2 text-right">In hand</th>
-                <th className="px-2 py-2 text-right">Computer qty</th>
+                <th className="px-2 py-2 text-right">Computer total</th>
                 <th className="px-2 py-2 text-right">Unposted sold</th>
                 <th className="px-2 py-2 text-right">Diff qty</th>
                 <th className="px-2 py-2 text-right">Diff value</th>
@@ -310,8 +300,8 @@ function StockEntryPage() {
               </tr>
             </thead>
             <tbody>
-              {visible.map(({ r, serial }, idx) => (
-                <Row key={r.id} r={r} idx={idx} serial={serial} onEdit={onEdit} />
+              {visible.map(({ r, serial }) => (
+                <Row key={r.id} r={r} lines={lineCount.get(r.id) ?? 0} serial={serial} onEdit={onEdit} />
               ))}
               {visible.length === 0 && (
                 <tr>

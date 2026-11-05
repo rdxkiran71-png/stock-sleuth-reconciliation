@@ -110,11 +110,13 @@ export function useAppState(): AppState {
 
 
 export const actions = {
-  addEntry(itemId: string, qty: number) {
+  addEntry(itemId: string, qty: number): string {
+    const id = uid();
     update((s) => ({
       ...s,
-      entries: [...s.entries, { id: uid(), itemId, qty, at: new Date().toISOString() }],
+      entries: [...s.entries, { id, itemId, qty, at: new Date().toISOString() }],
     }));
+    return id;
   },
   updateEntry(id: string, qty: number) {
     update((s) => ({ ...s, entries: s.entries.map((e) => (e.id === id ? { ...e, qty } : e)) }));
