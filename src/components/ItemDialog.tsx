@@ -47,7 +47,7 @@ export function ItemDialog({
     if (c !== null && (!Number.isFinite(c) || c < 0))
       { toast.error("Computer quantity must be 0 or more."); return; }
     if (item) {
-      actions.updateItem(item.id, { description: d, inHand: h, rate: r, computer: c });
+      actions.updateItem(item.id, { description: d, inHand: h, rate: r });
       toast.success("Item updated");
     } else {
       actions.addItem({ description: d, inHand: h, rate: r, computer: c });
@@ -78,10 +78,12 @@ export function ItemDialog({
               <Label htmlFor="inhand">In hand qty</Label>
               <Input id="inhand" type="number" min={0} value={inHand} onChange={(e) => setInHand(e.target.value)} />
             </div>
-            <div className="grid gap-1.5">
-              <Label htmlFor="comp">Computer qty</Label>
-              <Input id="comp" type="number" min={0} value={computer} onChange={(e) => setComputer(e.target.value)} placeholder="—" />
-            </div>
+            {!item && (
+              <div className="grid gap-1.5">
+                <Label htmlFor="comp">Computer qty</Label>
+                <Input id="comp" type="number" min={0} value={computer} onChange={(e) => setComputer(e.target.value)} placeholder="—" />
+              </div>
+            )}
             <div className="grid gap-1.5">
               <Label htmlFor="rate">Cost rate (Rs)</Label>
               <Input id="rate" type="number" min={0} value={rate} onChange={(e) => setRate(e.target.value)} />

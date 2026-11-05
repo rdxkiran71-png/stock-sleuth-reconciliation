@@ -61,6 +61,7 @@ export const QuickEntryBar = forwardRef<QuickEntryBarHandle, Props>(function Qui
   const codeRef = useRef<HTMLInputElement>(null);
   const qtyRef = useRef<HTMLInputElement>(null);
   const saveRef = useRef<HTMLButtonElement>(null);
+  const afterDialog = useRef<"qty" | "code">("code");
 
   useImperativeHandle(ref, () => ({ focus: () => codeRef.current?.focus() }));
 
@@ -269,8 +270,22 @@ export const QuickEntryBar = forwardRef<QuickEntryBarHandle, Props>(function Qui
         </div>
       </div>
 
-      <AlertDialog open={dupFor !== null} onOpenChange={(o) => !o && setDupFor(null)}>
-        <AlertDialogContent>
+      <AlertDialog
+        open={dupFor !== null}
+        onOpenChange={(o) => {
+          if (!o) {
+            if (dupFor && !selected) afterDialog.current = "code";
+            setDupFor(null);
+          }
+        }}
+      >
+        <AlertDialogContent
+          onCloseAutoFocus={(e) => {
+            e.preventDefault();
+            if (afterDialog.current === "qty") qtyRef.current?.select();
+            else codeRef.current?.focus();
+          }}
+        >
           <AlertDialogHeader>
             <AlertDialogTitle className="font-display">Item already added</AlertDialogTitle>
             <AlertDialogDescription asChild>
@@ -298,6 +313,7 @@ export const QuickEntryBar = forwardRef<QuickEntryBarHandle, Props>(function Qui
           <AlertDialogFooter>
             <AlertDialogCancel
               onClick={() => {
+                afterDialog.current = "code";
                 setDupFor(null);
                 reset();
               }}
@@ -308,6 +324,7 @@ export const QuickEntryBar = forwardRef<QuickEntryBarHandle, Props>(function Qui
               autoFocus
               onClick={() => {
                 const it = dupFor;
+                afterDialog.current = "qty";
                 setDupFor(null);
                 if (it) accept(it);
               }}
