@@ -57,11 +57,11 @@ function SalesPage() {
   const selected = itemId ? byId.get(itemId) : undefined;
 
   const submit = () => {
-    if (!selected) return toast.error("Please choose an item.");
+    if (!selected) { toast.error("Please choose an item."); return; }
     const q = Number(qty);
-    if (!Number.isInteger(q) || q <= 0) return toast.error("Quantity must be a whole number above 0.");
+    if (!Number.isInteger(q) || q <= 0) { toast.error("Quantity must be a whole number above 0."); return; }
     const r = saleRate.trim() === "" ? selected.rate : Number(saleRate);
-    if (!Number.isFinite(r) || r < 0) return toast.error("Sale rate must be 0 or more.");
+    if (!Number.isFinite(r) || r < 0) { toast.error("Sale rate must be 0 or more."); return; }
     const sale: Omit<Sale, "id"> = { itemId: selected.id, qty: q, saleRate: r, date };
     if (billNo.trim()) sale.billNo = billNo.trim();
     if (note.trim()) sale.note = note.trim();

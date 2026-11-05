@@ -40,12 +40,12 @@ export function ItemDialog({
     const d = description.trim().toUpperCase();
     const h = Number(inHand);
     const r = Number(rate);
-    if (!d) return toast.error("Please enter the item description.");
-    if (!Number.isFinite(h) || h < 0) return toast.error("In-hand quantity must be 0 or more.");
-    if (!Number.isFinite(r) || r < 0) return toast.error("Rate must be 0 or more.");
+    if (!d) { toast.error("Please enter the item description."); return; }
+    if (!Number.isFinite(h) || h < 0) { toast.error("In-hand quantity must be 0 or more."); return; }
+    if (!Number.isFinite(r) || r < 0) { toast.error("Rate must be 0 or more."); return; }
     const c = computer.trim() === "" ? null : Number(computer);
     if (c !== null && (!Number.isFinite(c) || c < 0))
-      return toast.error("Computer quantity must be 0 or more.");
+      { toast.error("Computer quantity must be 0 or more."); return; }
     if (item) {
       actions.updateItem(item.id, { description: d, inHand: h, rate: r, computer: c });
       toast.success("Item updated");

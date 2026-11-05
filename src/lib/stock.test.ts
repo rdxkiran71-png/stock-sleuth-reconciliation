@@ -32,7 +32,7 @@ describe("stock reconciliation", () => {
 
   it("item with no computer qty entered stays pending and out of totals", () => {
     const rows = reconcileAll([item({ computer: null })], []);
-    expect(rows[0].status).toBe("pending");
+    expect(rows[0]?.status).toBe("pending");
     expect(summarize(rows, []).shortValue).toBe(0);
   });
 
